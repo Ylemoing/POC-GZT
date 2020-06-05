@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="sale_purchase_report_tree_view" model="ir.ui.view">
+        <field name="name">sale.purchase.report list view</field>
+        <field name="model">sale.purchase.report.line</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <field name="product_id"/>
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="type"/>
+                <field name="qty_scheduled"/>
+                <field name="qty_real"/>
+                <field name="uom_id"/>
+                <field name="qty_stock_uom"/>
+                <field name="price"/>
+                <field name="currency_id" invisible="1"/>
+                <field name="comment"/>
+                <field name="state"/>
+                <button name="action_confirm" type="object" icon="fa-play" attrs="{'invisible': [('state', '!=', 'draft')]}" string="Confirm"/>
+                <field name="qty_scheduled_uom" groups="base.group_no_one"/>
+                <field name="qty_real_uom" groups="base.group_no_one"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="sale_purchase_report_graph_view" model="ir.ui.view">
+        <field name="name">sale.purchase.report graph view</field>
+        <field name="model">sale.purchase.report.line</field>
+        <field name="arch" type="xml">
+            <graph string="Sales / Purchases">
+                <field name="date" type="column"/>
+                <field name="qty_stock_uom" type="measure"/>
+            </graph>
+        </field>
+    </record>
+    <record id="sale_purchase_report_pivot_view" model="ir.ui.view">
+        <field name="name">sale.purchase.report pivot view</field>
+        <field name="model">sale.purchase.report.line</field>
+        <field name="arch" type="xml">
+            <pivot string="Sales / Purchases">
+                <field name="product_id" type="row"/>
+                <field name="date" type="column"/>
+                <field name="qty_stock_uom" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+
+
+    <record id="sale_purchase_report_search_view" model="ir.ui.view">
+        <field name="name">sale.purchase.report search view</field>
+        <field name="model">sale.purchase.report.line</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="product_id"/>
+                <filter string="Sales" name="sales" domain="[('type', '=', 'sale')]" />
+                <filter string="Purchases" name="purchases" domain="[('type', '=', 'purch')]" />
+                <filter string="Today" name="today" domain="[('date', '>=', context_today().strftime('%Y-%m-%d 00:00:00')), ('date', '&lt;=', context_today().strftime('%Y-%m-%d 23:59:59'))]" />
+                <filter string="Future" name="future" domain="[('date', '>=', context_today().strftime('%Y-%m-%d 00:00:00'))]" />
+            </search>
+            <group expand="0" string="Group By">
+                <filter string="Partner" name="partner" domain="[]" context="{'group_by': 'partner_id'}"/>
+                <filter string="Product" name="product" domain="[]" context="{'group_by': 'product_id'}"/>
+                <filter string="Date" name="date" domain="[]" context="{'group_by': 'date'}"/>
+                <filter string="Type" name="type" domain="[]" context="{'group_by': 'type'}"/>
+            </group>
+
+        </field>
+    </record>
+    <act_window
+        id="action_sale_purchase_report"
+        name="Sale Purchase Report"
+        res_model="sale.purchase.report.line"
+        view_mode="list,graph,pivot"
+        />
+    <menuitem id="sale_purchase_report_menu" name="Sale Purchase Report" parent="stock.menu_warehouse_report" sequence="500" action="action_sale_purchase_report"/>
+
+</odoo>
