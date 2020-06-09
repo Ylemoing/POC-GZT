@@ -1,6 +1,15 @@
 from odoo import api, fields, models
 
 
+class PurchaseOrder(models.Model):
+    _inherit = "purchase.order"
+
+    def button_cancel(self):
+        report_lines = self.mapped("order_line.sale_purchase_report_line_ids")
+        report_lines._action_cancel()
+        super().button_cancel()
+
+
 class PurchaseOrderLine(models.Model):
     _inherit = "purchase.order.line"
 

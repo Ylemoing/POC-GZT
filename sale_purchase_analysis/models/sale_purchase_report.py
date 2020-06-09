@@ -6,54 +6,115 @@ STATES = {"confirm": [("readonly", True)], "done": [("readonly", True)]}
 class SalePurchaseReportLine(models.Model):
     _name = "sale.purchase.report.line"
     _description = "Sale / Purchase report line"
-    _order = "product_id, date, id"
+    _order = "date, product_id, id"
 
     name = fields.Char(
         related="product_id.display_name", string="Name", states=STATES
     )
     sale_line_id = fields.Many2one(
         "sale.order.line",
+        string="Sale Order Line",
         domain="[('product_id', '=', product_id)]",
         states=STATES,
     )
     purchase_line_id = fields.Many2one(
         "purchase.order.line",
+        string="Purchase Order Line",
         domain="[('product_id', '=', product_id)]",
         states=STATES,
     )
     product_id = fields.Many2one(
-        "product.product", required=True, states=STATES
+        "product.product", string="Product", required=True, states=STATES
     )
-    uom_id = fields.Many2one("uom.uom", states=STATES)
+    uom_id = fields.Many2one("uom.uom", string="UoM", states=STATES)
     type = fields.Selection(
         [("sale", "Sale"), ("purch", "Purchase")],
         required=True,
         default="sale",
         states=STATES,
     )
-    date = fields.Datetime(default=fields.Datetime.now, states=STATES)
-    qty_scheduled = fields.Float(states=STATES)
-    qty_real = fields.Float(compute="_compute_qty_real", store=True)
-    qty_scheduled_uom = fields.Float(compute="_compute_qty_uom", store=True)
-    qty_real_uom = fields.Float(compute="_compute_qty_uom", store=True)
+    date = fields.Datetime(
+        default=fields.Datetime.now, string="Order Date", states=STATES
+    )
+    qty_scheduled = fields.Float(string="Scheduled quantity", states=STATES)
+    qty_real = fields.Float(
+        compute="_compute_qty_real", string="Actual quantity", store=True
+    )
+    qty_scheduled_uom = fields.Float(
+        compute="_compute_qty_uom",
+        string="Scheduled Quantity (in product's UoM)",
+        store=True,
+    )
+    qty_real_uom = fields.Float(
+        compute="_compute_qty_uom",
+        string="Real Quantity (in product's UoM)",
+        store=True,
+    )
     currency_id = fields.Many2one(
         "res.currency",
+        string="Currency",
         default=lambda s: s.env.user.company_id.currency_id.id,
         states=STATES,
     )
-    price = fields.Monetary(states=STATES)
-    comment = fields.Char()
-    previous_line_id = fields.Many2one("sale.purchase.report.line", index=True)
-    partner_id = fields.Many2one("res.partner", required=True, states=STATES)
-    qty_stock_uom = fields.Float(compute="_compute_qty_stock", store=True)
+    price = fields.Monetary(string="Price", states=STATES)
+    comment = fields.Char(string="Comment")
+    previous_line_id = fields.Many2one(
+        "sale.purchase.report.line",
+        string="Previous Line",
+        index=True,
+        help="used for stock computation",
+    )
+    partner_id = fields.Many2one(
+        "res.partner",
+        string="Partner",
+        required=True,
+        states=STATES,
+        help="vendor or customer",
+    )
+    qty_stock_uom = fields.Float(
+        compute="_compute_qty_stock",
+        string="Forecast Quantity",
+        store=True,
+        help="Forecast quantity, expressed in the product's UoM",
+    )
+    qty_stock_negative = fields.Boolean(
+        compute="_compute_qty_stock", string="Forcast quantity negative"
+    )
     state = fields.Selection(
-        [("draft", "Planned"), ("confirm", "Confirmed"), ("done", "Done")],
+        [
+            ("draft", "Planned"),
+            ("confirm", "Confirmed"),
+            ("done", "Done"),
+            ("cancel", "Cancelled"),
+        ],
+        string="State",
         default="draft",
         readonly=True,
     )
+    order_name = fields.Char(
+        readonly=True,
+        string="Order Name",
+        help="Sale order or Purchase order name",
+    )
+    date_delivery = fields.Datetime(
+        compute="_compute_date_delivery", string="Delivery Date", store=True
+    )
+    user_id = fields.Many2one("res.users", string="User")
 
     def _default_currency(self):
         return self.env.user.company_id.currency_id.id
+
+    @api.depends(
+        "sale_line_id.move_ids.date", "type", "purchase_line_id.move_ids.date"
+    )
+    def _compute_date_delivery(self):
+        for rec in self:
+            if rec.type == "sale" and rec.sale_line_id.move_ids:
+                rec.date_delivery = rec.sale_line_id.move_ids[0].date
+            elif rec.purchase_line_id.move_ids:
+                rec.date_delivery = rec.purchase_line_id.move_ids[0].date
+            else:
+                rec.date_delivery = False
 
     @api.depends(
         "sale_line_id",
@@ -101,15 +162,22 @@ class SalePurchaseReportLine(models.Model):
         "qty_real_uom",
         "qty_scheduled_uom",
         "type",
+        "state",
     )
     def _compute_qty_stock(self):
         for rec in self:
             sign = -1 if rec.type == "sale" else 1
-            qty = self.qty_real_uom or self.qty_scheduled_uom
+            if rec.state != "cancel":
+                qty = rec.qty_real_uom or rec.qty_scheduled_uom
+            else:
+                qty = 0
             rec.qty_stock_uom = rec.previous_line_id.qty_stock_uom + sign * qty
+            rec.qty_stock_negative = rec.qty_stock_uom < 0
 
     def action_confirm(self):
         for rec in self:
+            if rec.state != "draft":
+                continue
             if rec.type == "sale":
                 if not self.sale_line_id:
                     so = rec._create_sale()
@@ -117,6 +185,7 @@ class SalePurchaseReportLine(models.Model):
                     so = rec.sale_line_id.order_id
                 if so.state == "draft":
                     so.action_confirm()
+                rec.order_name = so.name
             else:
                 if not rec.purchase_line_id:
                     po = rec._create_purchase()
@@ -124,7 +193,11 @@ class SalePurchaseReportLine(models.Model):
                     po = rec.purchase_line_id.order_id
                 if po.state == "draft":
                     po.button_confirm()
+                rec.order_name = po.name
             rec.state = "confirm"
+
+    def _action_cancel(self):
+        self.write({"state": "cancel"})
 
     def _create_sale(self):
         self.ensure_one()
@@ -199,3 +272,15 @@ class SalePurchaseReportLine(models.Model):
             following = self.search([("previous_line_id", "=", previous.id)])
             rec.previous_line_id = previous
             following.previous = rec
+
+    def action_open_order(self):
+        self.ensure_one()
+        if self.type == "sale":
+            action = self.env.ref("sale.action_orders").read()[0]
+            order = self.sale_line_id.order_id
+        else:
+            action = self.env.ref("purchase.purchase_form_action").read()[0]
+            order = self.purchase_line_id.order_id
+        action["view_mode"] = "form"
+        action["domain"] = [("id", "=", order.id)]
+        return action
