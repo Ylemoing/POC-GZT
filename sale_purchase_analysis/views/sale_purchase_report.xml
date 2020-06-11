@@ -9,8 +9,8 @@
                 <field name="product_id"/>
                 <field name="date"/>
                 <field name="date_delivery"/>
-                <field name="partner_id"/>
                 <field name="type"/>
+                <field name="partner_id"/>
                 <field name="qty_scheduled"/>
                 <field name="qty_real"/>
                 <field name="uom_id"/>
