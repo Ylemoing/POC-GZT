@@ -7,7 +7,7 @@ class PurchaseOrder(models.Model):
     def button_cancel(self):
         report_lines = self.mapped("order_line.sale_purchase_report_line_ids")
         report_lines._action_cancel()
-        super().button_cancel()
+        return super().button_cancel()
 
 
 class PurchaseOrderLine(models.Model):

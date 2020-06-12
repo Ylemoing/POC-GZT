@@ -7,7 +7,7 @@ class SaleOrder(models.Model):
     def action_cancel(self):
         report_lines = self.mapped("order_line.sale_purchase_report_line_ids")
         report_lines._action_cancel()
-        super().action_cancel()
+        return super().action_cancel()
 
 
 class SaleOrderLine(models.Model):
@@ -34,3 +34,4 @@ class SaleOrderLine(models.Model):
                         "type": "sale",
                     }
                 )
+        return recs
